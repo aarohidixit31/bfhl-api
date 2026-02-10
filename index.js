@@ -1,5 +1,4 @@
 require("dotenv").config();
-
 const express = require("express");
 const axios = require("axios");
 
@@ -10,31 +9,77 @@ const PORT = process.env.PORT || 3000;
 const OFFICIAL_EMAIL = "aarohi0173.be23@chitkara.edu.in";
 
 /* =========================
-   HEALTH CHECK API
+   HELPER FUNCTIONS
 ========================= */
+
+const fibonacci = (n) => {
+  const num = parseInt(n);
+  if (isNaN(num) || num <= 0) return [];
+  const series = [0, 1];
+  for (let i = 2; i < num; i++) {
+    series.push(series[i - 1] + series[i - 2]);
+  }
+  return series.slice(0, num);
+};
+
+const isPrime = (num) => {
+  const n = parseInt(num);
+  if (isNaN(n) || n < 2) return false;
+  for (let i = 2; i <= Math.sqrt(n); i++) {
+    if (n % i === 0) return false;
+  }
+  return true;
+};
+
+const hcf = (a, b) => {
+  a = Math.abs(a);
+  b = Math.abs(b);
+  while (b !== 0) {
+    [a, b] = [b, a % b];
+  }
+  return a;
+};
+
+const lcm = (a, b) => {
+  if (a === 0 || b === 0) return 0;
+  return Math.abs(a * b) / hcf(a, b);
+};
+
+/* =========================
+   GEMINI AI
+========================= */
+
+const askAI = async (question) => {
+  const response = await axios.post(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    {
+      contents: [
+        {
+          parts: [{ text: `${question}. Answer in one word only.` }]
+        }
+      ]
+    }
+  );
+
+  return response.data.candidates[0].content.parts[0].text.trim();
+};
+
+/* =========================
+   ROUTES
+========================= */
+
 app.get("/health", (req, res) => {
-  return res.status(200).json({
+  res.status(200).json({
     is_success: true,
     official_email: OFFICIAL_EMAIL
   });
 });
 
-/* =========================
-   MAIN BFHL API
-========================= */
 app.post("/bfhl", async (req, res) => {
   try {
     const body = req.body;
+    const keys = Object.keys(body || {});
 
-    if (!body || typeof body !== "object") {
-      return res.status(400).json({
-        is_success: false,
-        official_email: OFFICIAL_EMAIL,
-        error: "Invalid JSON body"
-      });
-    }
-
-    const keys = Object.keys(body);
     if (keys.length !== 1) {
       return res.status(422).json({
         is_success: false,
@@ -44,121 +89,55 @@ app.post("/bfhl", async (req, res) => {
     }
 
     const key = keys[0];
-    const value = body[key];
-    let result;
+    const val = body[key];
+    let data;
 
     switch (key) {
       case "fibonacci":
-        result = fibonacci(value);
+        data = fibonacci(val);
         break;
       case "prime":
-        result = filterPrimes(value);
+        if (!Array.isArray(val)) throw new Error("Prime expects an array");
+        data = val.filter(isPrime);
         break;
       case "lcm":
-        result = lcmArray(value);
+        if (!Array.isArray(val) || val.length < 2) throw new Error("LCM needs array");
+        data = val.reduce((a, b) => lcm(a, b));
         break;
       case "hcf":
-        result = hcfArray(value);
+        if (!Array.isArray(val) || val.length < 2) throw new Error("HCF needs array");
+        data = val.reduce((a, b) => hcf(a, b));
         break;
       case "AI":
-        result = await getAIResponse(value);
+        data = await askAI(val);
         break;
       default:
         return res.status(400).json({
           is_success: false,
           official_email: OFFICIAL_EMAIL,
-          error: "Invalid key provided"
+          error: "Invalid key"
         });
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       is_success: true,
       official_email: OFFICIAL_EMAIL,
-      data: result
+      data
     });
 
   } catch (err) {
-    console.error(err.response?.data || err.message);
-
-    return res.status(500).json({
+    res.status(500).json({
       is_success: false,
       official_email: OFFICIAL_EMAIL,
-      error: "Internal server error"
+      error: err.message
     });
   }
 });
-
-/* =========================
-   LOGIC FUNCTIONS
-========================= */
-
-// Fibonacci
-function fibonacci(n) {
-  if (!Number.isInteger(n) || n < 0) throw new Error();
-  const arr = [0, 1];
-  for (let i = 2; i < n; i++) {
-    arr.push(arr[i - 1] + arr[i - 2]);
-  }
-  return arr.slice(0, n);
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server running on PORT ${PORT}`);
+  });
 }
 
-// Prime
-function isPrime(num) {
-  if (!Number.isInteger(num) || num <= 1) return false;
-  for (let i = 2; i <= Math.sqrt(num); i++) {
-    if (num % i === 0) return false;
-  }
-  return true;
-}
 
-function filterPrimes(arr) {
-  if (!Array.isArray(arr)) throw new Error();
-  return arr.filter(isPrime);
-}
-
-// HCF
-function gcd(a, b) {
-  return b === 0 ? a : gcd(b, a % b);
-}
-
-function hcfArray(arr) {
-  if (!Array.isArray(arr) || arr.length === 0) throw new Error();
-  return arr.reduce((a, b) => gcd(a, b));
-}
-
-// LCM
-function lcm(a, b) {
-  return (a * b) / gcd(a, b);
-}
-
-function lcmArray(arr) {
-  if (!Array.isArray(arr) || arr.length === 0) throw new Error();
-  return arr.reduce((a, b) => lcm(a, b));
-}
-
-// Gemini AI
-async function getAIResponse(question) {
-  if (typeof question !== "string" || question.trim() === "") throw new Error();
-
-  const response = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-    {
-      contents: [
-        {
-          parts: [
-            { text: `${question}. Answer in ONE WORD only.` }
-          ]
-        }
-      ]
-    }
-  );
-
-  return response.data.candidates[0].content.parts[0].text.trim();
-}
-
-/* =========================
-   START SERVER
-========================= */
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+module.exports = app;
