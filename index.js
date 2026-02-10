@@ -50,19 +50,38 @@ const lcm = (a, b) => {
 ========================= */
 
 const askAI = async (question) => {
-  const response = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-    {
-      contents: [
-        {
-          parts: [{ text: `${question}. Answer in one word only.` }]
-        }
-      ]
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      return "Unknown";
     }
-  );
 
-  return response.data.candidates[0].content.parts[0].text.trim();
+    const response = await axios.post(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+      {
+        contents: [
+          {
+            parts: [{ text: `${question}. Answer in one word only.` }]
+          }
+        ]
+      },
+      {
+        headers: { "Content-Type": "application/json" },
+        params: { key: process.env.GEMINI_API_KEY },
+        timeout: 8000
+      }
+    );
+
+    const text =
+      response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    return text ? text.trim().split(/\s+/)[0] : "Unknown";
+
+  } catch (err) {
+    // 🚨 DO NOT THROW
+    return "Unknown";
+  }
 };
+
 
 /* =========================
    ROUTES
